@@ -213,6 +213,17 @@
     transition: filter 0.3s;
   }
   .identity-photo.hidden { filter: blur(28px); }
+  .identity-name {
+    font-family: 'Fraunces', serif;
+    font-weight: 700;
+    font-size: 30px;
+    line-height: 1.15;
+    color: var(--ink);
+    margin-top: 16px;
+    transition: filter 0.3s;
+    word-break: break-word;
+  }
+  .identity-name.hidden { filter: blur(16px); }
   .identity-side {
     margin-top: 14px;
     font-size: 13px;
@@ -283,6 +294,7 @@ let state = {
   pin: null,
   role: null,
   youSeeImage: null,
+  youSeeName: null,
   pollTimer: null,
   hidden: false
 };
@@ -371,9 +383,10 @@ function renderPlay() {
     <div class="view">
       <div class="panel">
         <div class="identity-wrap">
-          <div class="identity-tag">Partner · keep this hidden</div>
+          <div class="identity-tag">Their identity · they answer about this</div>
           <img class="identity-photo${state.hidden ? ' hidden' : ''}" id="photo" src="${state.youSeeImage}" alt="Their secret identity" />
-          <div class="identity-side">…this is who <em>they</em> are. No name shown — just like the real game. Ask them questions until they guess it.</div>
+          <div class="identity-name${state.hidden ? ' hidden' : ''}" id="name">${state.youSeeName}</div>
+          <div class="identity-side">This is who <em>they</em> are. They ask you questions; you answer yes/no based on this. Use Hide so it never shows on FaceTime.</div>
         </div>
       </div>
       <div class="btn-row" style="margin-bottom: 10px;">
@@ -397,6 +410,7 @@ async function createGame() {
     state.pin = data.pin;
     state.role = 'host';
     state.youSeeImage = data.youSeeImage;
+    state.youSeeName = data.youSeeName;
     state.view = 'lobby';
     render();
   } catch (e) {
@@ -419,6 +433,7 @@ async function doJoin() {
     state.pin = data.pin;
     state.role = 'guest';
     state.youSeeImage = data.youSeeImage;
+    state.youSeeName = data.youSeeName;
     state.view = 'lobby';
     render();
   } catch (e) {
@@ -474,6 +489,7 @@ async function leaveGame() {
   state.pin = null;
   state.role = null;
   state.youSeeImage = null;
+  state.youSeeName = null;
   state.hidden = false;
   state.view = 'home';
   render();

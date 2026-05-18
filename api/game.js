@@ -1,25 +1,23 @@
 // In-memory store. Resets when serverless function cold-starts but fine for casual 2-player use.
 const games = global.__games || (global.__games = {});
 
+// Real people only — every name resolves to a real freely-licensed
+// photo on Wikipedia, so no avatar fallbacks are needed in practice.
 const POOL = [
   // Musicians
   "Taylor Swift", "Beyoncé", "Drake", "Rihanna", "Bad Bunny",
   "Lady Gaga", "Adele", "Bruno Mars", "Billie Eilish", "Ariana Grande",
+  "Ed Sheeran", "Justin Bieber", "Snoop Dogg", "Dolly Parton", "Shakira",
   // Actors
   "Tom Hanks", "Keanu Reeves", "Zendaya", "Timothée Chalamet", "Pedro Pascal",
   "Margot Robbie", "Ryan Gosling", "Emma Stone", "Will Smith", "Dwayne Johnson",
+  "Jennifer Lawrence", "Leonardo DiCaprio", "Scarlett Johansson", "Denzel Washington", "Tom Cruise",
   // Athletes
   "LeBron James", "Cristiano Ronaldo", "Lionel Messi", "Serena Williams", "Steph Curry",
+  "Usain Bolt", "Simone Biles", "Roger Federer", "Tom Brady", "Naomi Osaka",
   // Public figures
   "Barack Obama", "Oprah Winfrey", "Elon Musk", "Kim Kardashian", "MrBeast",
-  // Disney / animation
-  "Elsa", "Moana", "Mickey Mouse", "Shrek", "Buzz Lightyear",
-  "SpongeBob", "Homer Simpson", "Pikachu", "Mario", "Bugs Bunny",
-  // Superheroes
-  "Spider-Man", "Iron Man", "Batman", "Wonder Woman", "Captain America",
-  // Movies / books / TV
-  "Harry Potter", "Hermione Granger", "Gandalf", "Yoda", "Darth Vader",
-  "Walter White", "Eleven", "Sherlock Holmes", "Katniss Everdeen", "James Bond"
+  "Bill Gates", "Greta Thunberg", "Michelle Obama", "Gordon Ramsay", "David Attenborough"
 ];
 
 function pickTwo() {
@@ -89,9 +87,9 @@ export default async function handler(req, res) {
       guestJoined: false,
       created: Date.now()
     };
-    // The host sees the guest's identity — as a picture only.
+    // The host sees the guest's identity (picture + name).
     const youSeeImage = await fetchImage(guestName);
-    return res.status(200).json({ ok: true, pin, youSeeImage, role: "host" });
+    return res.status(200).json({ ok: true, pin, youSeeImage, youSeeName: guestName, role: "host" });
   }
 
   if (action === "join") {
@@ -99,9 +97,9 @@ export default async function handler(req, res) {
     if (!games[pin]) return res.status(404).json({ ok: false, error: "No game with that PIN" });
     if (games[pin].guestJoined) return res.status(409).json({ ok: false, error: "Game already full" });
     games[pin].guestJoined = true;
-    // The guest sees the host's identity — as a picture only.
+    // The guest sees the host's identity (picture + name).
     const youSeeImage = await fetchImage(games[pin].hostName);
-    return res.status(200).json({ ok: true, pin, youSeeImage, role: "guest" });
+    return res.status(200).json({ ok: true, pin, youSeeImage, youSeeName: games[pin].hostName, role: "guest" });
   }
 
   if (action === "status") {
