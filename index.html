@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Guess Who? — FaceTime edition</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,700;9..144,900&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  :root {
+    --bg: #0e0b08;
+    --bg2: #181310;
+    --ink: #f5ede0;
+    --ink-dim: #b9a994;
+    --ink-faint: #7a6a55;
+    --accent: #ff6b35;
+    --accent2: #ffd166;
+    --line: rgba(245, 237, 224, 0.12);
+  }
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: 'Inter', system-ui, sans-serif;
+    overflow-x: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    background:
+      radial-gradient(ellipse at top, rgba(255, 107, 53, 0.18) 0%, transparent 50%),
+      radial-gradient(ellipse at bottom, rgba(255, 209, 102, 0.08) 0%, transparent 60%),
+      var(--bg);
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding: 24px 20px 40px;
+    display: flex;
+    flex-direction: column;
+  }
+  .app { max-width: 440px; margin: 0 auto; width: 100%; flex: 1; display: flex; flex-direction: column; }
+  .serif { font-family: 'Fraunces', Georgia, serif; }
+
+  /* Header */
+  .header { text-align: center; margin-bottom: 32px; }
+  .header h1 {
+    font-family: 'Fraunces', serif;
+    font-weight: 900;
+    font-size: 42px;
+    line-height: 0.95;
+    letter-spacing: -0.02em;
+    font-style: italic;
+    background: linear-gradient(135deg, var(--accent2), var(--accent));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .header h1 .who { font-style: normal; }
+  .header .sub {
+    color: var(--ink-dim);
+    font-size: 13px;
+    margin-top: 6px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  /* Cards / panels */
+  .panel {
+    background: rgba(24, 19, 16, 0.7);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--line);
+    border-radius: 20px;
+    padding: 24px;
+    margin-bottom: 14px;
+  }
+
+  /* Buttons */
+  button {
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    background: none;
+    color: inherit;
+  }
+  .btn {
+    width: 100%;
+    padding: 18px;
+    border-radius: 14px;
+    font-size: 16px;
+    font-weight: 600;
+    background: var(--ink);
+    color: var(--bg);
+    transition: transform 0.1s, opacity 0.2s;
+    margin-bottom: 10px;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn-accent {
+    background: linear-gradient(135deg, var(--accent), #e8541d);
+    color: #fff;
+  }
+  .btn-ghost {
+    background: transparent;
+    color: var(--ink);
+    border: 1px solid var(--line);
+  }
+  .btn-small {
+    width: auto;
+    padding: 10px 18px;
+    font-size: 14px;
+    margin: 0;
+  }
+  .btn[disabled] { opacity: 0.4; cursor: not-allowed; }
+
+  /* Inputs */
+  .pin-input {
+    width: 100%;
+    padding: 24px 20px;
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    color: var(--ink);
+    font-family: 'Fraunces', serif;
+    font-size: 42px;
+    font-weight: 700;
+    text-align: center;
+    letter-spacing: 18px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .pin-input:focus { border-color: var(--accent); }
+  .pin-input::placeholder { color: var(--ink-faint); letter-spacing: 18px; }
+
+  /* PIN display */
+  .pin-display {
+    text-align: center;
+    padding: 12px 0 4px;
+  }
+  .pin-label {
+    font-size: 11px;
+    color: var(--ink-faint);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+  }
+  .pin-big {
+    font-family: 'Fraunces', serif;
+    font-weight: 900;
+    font-style: italic;
+    font-size: 76px;
+    letter-spacing: 8px;
+    line-height: 1;
+    background: linear-gradient(135deg, var(--accent2), var(--accent));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 12px;
+  }
+  .pin-hint { color: var(--ink-dim); font-size: 14px; }
+
+  /* Status row */
+  .status-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(255, 107, 53, 0.08);
+    border: 1px solid rgba(255, 107, 53, 0.2);
+    padding: 14px 16px;
+    border-radius: 12px;
+    margin-bottom: 16px;
+    font-size: 14px;
+    color: var(--ink-dim);
+  }
+  .status-row.ready {
+    background: rgba(120, 200, 100, 0.1);
+    border-color: rgba(120, 200, 100, 0.25);
+    color: #c5e7b8;
+  }
+  .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent);
+    animation: pulse 1.4s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+  .status-row.ready .dot { background: #8acc6e; animation: none; }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.4; transform: scale(0.85); }
+    50% { opacity: 1; transform: scale(1.1); }
+  }
+
+  /* Identity reveal */
+  .identity-wrap {
+    text-align: center;
+    padding: 20px 0;
+  }
+  .identity-tag {
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 16px;
+  }
+  .identity-name {
+    font-family: 'Fraunces', serif;
+    font-weight: 700;
+    font-size: 38px;
+    line-height: 1.15;
+    color: var(--ink);
+    padding: 8px 0;
+    transition: filter 0.3s;
+    word-break: break-word;
+  }
+  .identity-name.hidden { filter: blur(20px); }
+  .identity-side {
+    margin-top: 14px;
+    font-size: 13px;
+    color: var(--ink-dim);
+    font-style: italic;
+  }
+
+  /* Tips section */
+  .tips {
+    padding: 18px 20px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 14px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--ink-dim);
+    border-left: 3px solid var(--accent);
+    margin-top: 4px;
+  }
+  .tips strong { color: var(--ink); font-weight: 600; }
+
+  /* Error */
+  .error {
+    color: #ff9b8a;
+    font-size: 14px;
+    text-align: center;
+    min-height: 20px;
+    margin: 8px 0 10px;
+  }
+
+  /* Footer */
+  .foot {
+    margin-top: auto;
+    padding-top: 30px;
+    text-align: center;
+    font-size: 11px;
+    color: var(--ink-faint);
+    letter-spacing: 0.08em;
+  }
+
+  /* Fade in */
+  .view { animation: fadeIn 0.3s ease; }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Button row */
+  .btn-row { display: flex; gap: 10px; }
+  .btn-row .btn { margin-bottom: 0; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="header">
+    <h1>Guess <span class="who">Who?</span></h1>
+    <div class="sub">For two · over FaceTime</div>
+  </div>
+
+  <div id="screen"></div>
+
+  <div class="foot">made for you & her ♡</div>
+</div>
+
+<script>
+const screen = document.getElementById('screen');
+let state = {
+  view: 'home',
+  pin: null,
+  role: null,
+  youSee: null,
+  pollTimer: null,
+  hidden: false
+};
+
+function html(strings, ...values) {
+  return strings.reduce((acc, str, i) => acc + str + (values[i] !== undefined ? values[i] : ''), '');
+}
+
+function render() {
+  // clear polling unless on lobby
+  if (state.pollTimer && state.view !== 'lobby') {
+    clearInterval(state.pollTimer);
+    state.pollTimer = null;
+  }
+  if (state.view === 'home') renderHome();
+  else if (state.view === 'join') renderJoin();
+  else if (state.view === 'lobby') renderLobby();
+  else if (state.view === 'play') renderPlay();
+}
+
+function renderHome() {
+  screen.innerHTML = html`
+    <div class="view">
+      <div class="panel">
+        <div style="text-align: center; padding: 8px 0 18px;">
+          <div style="font-family: 'Fraunces', serif; font-style: italic; font-size: 22px; color: var(--ink); line-height: 1.4;">
+            Hold up your phone.<br>Ask yes-or-no questions.<br>Guess who you are.
+          </div>
+        </div>
+        <button class="btn btn-accent" onclick="createGame()">Start a new game</button>
+        <button class="btn btn-ghost" onclick="goJoin()">Join with PIN</button>
+      </div>
+      <div class="tips">
+        <strong>How to play.</strong> One of you taps <em>Start a new game</em> and gets a 4-digit PIN. Send it to the other. They tap <em>Join</em> and enter it. Each phone reveals the <strong>other</strong> person's secret identity. Take turns asking yes/no questions on FaceTime until someone figures out who they are.
+      </div>
+    </div>
+  `;
+}
+
+function renderJoin() {
+  screen.innerHTML = html`
+    <div class="view">
+      <div class="panel">
+        <div class="pin-label" style="text-align: center; margin-bottom: 18px;">Enter the 4-digit PIN</div>
+        <input id="pin-in" class="pin-input" type="tel" inputmode="numeric" maxlength="4" placeholder="••••" autocomplete="off" />
+        <div class="error" id="err"></div>
+        <button class="btn btn-accent" onclick="doJoin()">Join game</button>
+        <button class="btn btn-ghost" onclick="goHome()">Back</button>
+      </div>
+    </div>
+  `;
+  const input = document.getElementById('pin-in');
+  input.focus();
+  input.addEventListener('input', (e) => {
+    e.target.value = e.target.value.replace(/[^0-9]/g, '');
+    if (e.target.value.length === 4) doJoin();
+  });
+}
+
+function renderLobby() {
+  const isHost = state.role === 'host';
+  screen.innerHTML = html`
+    <div class="view">
+      <div class="panel">
+        <div class="pin-display">
+          <div class="pin-label">Your game PIN</div>
+          <div class="pin-big">${state.pin}</div>
+          <div class="pin-hint">${isHost ? 'Send this to your partner' : "You're in!"}</div>
+        </div>
+      </div>
+      <div class="status-row" id="status">
+        <div class="dot"></div>
+        <div id="status-text">${isHost ? 'Waiting for them to join…' : 'Both in. Ready to play!'}</div>
+      </div>
+      <div id="lobby-actions">
+        ${!isHost ? '<button class="btn btn-accent" onclick="goPlay()">Reveal my identity</button>' : ''}
+        <button class="btn btn-ghost" onclick="leaveGame()">Leave</button>
+      </div>
+    </div>
+  `;
+  if (isHost) startPolling();
+}
+
+function renderPlay() {
+  screen.innerHTML = html`
+    <div class="view">
+      <div class="panel">
+        <div class="identity-wrap">
+          <div class="identity-tag">${state.role === 'host' ? 'Partner' : 'Partner'} · keep this hidden</div>
+          <div class="identity-name${state.hidden ? ' hidden' : ''}" id="name">${state.youSee}</div>
+          <div class="identity-side">…this is who <em>they</em> are. Ask them questions until they guess it.</div>
+        </div>
+      </div>
+      <div class="btn-row" style="margin-bottom: 10px;">
+        <button class="btn btn-ghost btn-small" style="flex: 1; padding: 14px;" onclick="toggleHide()">${state.hidden ? 'Reveal' : 'Hide name'}</button>
+        <button class="btn btn-ghost btn-small" style="flex: 1; padding: 14px;" onclick="leaveGame()">New game</button>
+      </div>
+      <div class="tips">
+        <strong>Tip.</strong> Don't show your screen on FaceTime — angle your phone away or use the Hide button when she's looking. Take turns asking one yes/no question at a time.
+      </div>
+    </div>
+  `;
+}
+
+// --- actions ---
+
+async function createGame() {
+  try {
+    const res = await fetch('/api/game?action=create', { method: 'POST' });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'Failed');
+    state.pin = data.pin;
+    state.role = 'host';
+    state.youSee = data.youSee;
+    state.view = 'lobby';
+    render();
+  } catch (e) {
+    alert('Could not create game. Try again?');
+  }
+}
+
+function goJoin() { state.view = 'join'; render(); }
+function goHome() { state.view = 'home'; render(); }
+
+async function doJoin() {
+  const pin = document.getElementById('pin-in').value.trim();
+  const err = document.getElementById('err');
+  err.textContent = '';
+  if (pin.length !== 4) { err.textContent = 'PIN needs to be 4 digits'; return; }
+  try {
+    const res = await fetch('/api/game?action=join&pin=' + pin, { method: 'POST' });
+    const data = await res.json();
+    if (!data.ok) { err.textContent = data.error || 'Could not join'; return; }
+    state.pin = data.pin;
+    state.role = 'guest';
+    state.youSee = data.youSee;
+    state.view = 'lobby';
+    render();
+  } catch (e) {
+    err.textContent = 'Network problem — try again';
+  }
+}
+
+function startPolling() {
+  if (state.pollTimer) clearInterval(state.pollTimer);
+  state.pollTimer = setInterval(async () => {
+    if (state.view !== 'lobby' || state.role !== 'host') return;
+    try {
+      const res = await fetch('/api/game?action=status&pin=' + state.pin);
+      const data = await res.json();
+      if (data.ok && data.guestJoined) {
+        clearInterval(state.pollTimer);
+        state.pollTimer = null;
+        // Update UI to "ready" and show start button
+        const status = document.getElementById('status');
+        const statusText = document.getElementById('status-text');
+        if (status && statusText) {
+          status.classList.add('ready');
+          statusText.textContent = "She's in. Reveal who she is.";
+        }
+        const actions = document.getElementById('lobby-actions');
+        if (actions && !document.getElementById('start-btn')) {
+          const btn = document.createElement('button');
+          btn.id = 'start-btn';
+          btn.className = 'btn btn-accent';
+          btn.textContent = 'Reveal my identity';
+          btn.onclick = goPlay;
+          actions.insertBefore(btn, actions.firstChild);
+        }
+      }
+    } catch (e) { /* keep polling */ }
+  }, 2000);
+}
+
+function goPlay() { state.view = 'play'; render(); }
+
+function toggleHide() {
+  state.hidden = !state.hidden;
+  const el = document.getElementById('name');
+  if (el) el.classList.toggle('hidden', state.hidden);
+  // also update button text
+  render();
+}
+
+async function leaveGame() {
+  if (state.pin) {
+    try { await fetch('/api/game?action=end&pin=' + state.pin, { method: 'POST' }); } catch(e){}
+  }
+  state.pin = null;
+  state.role = null;
+  state.youSee = null;
+  state.hidden = false;
+  state.view = 'home';
+  render();
+}
+
+render();
+</script>
+</body>
+</html>
