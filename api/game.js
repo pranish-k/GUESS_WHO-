@@ -1,5 +1,10 @@
-// In-memory store. Resets when serverless function cold-starts but fine for casual 2-player use.
-const games = global.__games || (global.__games = {});
+// Game state is stored in Upstash Redis (REST API) so it survives serverless
+// cold starts and multi-instance routing — required for replaying many rounds
+// on one PIN. Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN in the
+// Vercel project env. Without them the game cannot keep shared state.
+
+const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
+const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 
 // Real people only — every name resolves to a real freely-licensed
 // photo on Wikipedia, so no avatar fallbacks are needed in practice.
@@ -20,6 +25,36 @@ const POOL = [
   "Bill Gates", "Greta Thunberg", "Michelle Obama", "Gordon Ramsay", "David Attenborough"
 ];
 
+// --- Redis REST helpers ---------------------------------------------------
+
+async function redis(command) {
+  const r = await fetch(REDIS_URL, {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer " + REDIS_TOKEN,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(command)
+  });
+  if (!r.ok) throw new Error("Redis error " + r.status);
+  const data = await r.json();
+  return data.result;
+}
+
+const KEY = (pin) => "gw:game:" + pin;
+const GAME_TTL = 60 * 60 * 6; // 6h — plenty for a long replay session
+
+async function loadGame(pin) {
+  const raw = await redis(["GET", KEY(pin)]);
+  return raw ? JSON.parse(raw) : null;
+}
+
+async function saveGame(game) {
+  await redis(["SET", KEY(game.pin), JSON.stringify(game), "EX", GAME_TTL]);
+}
+
+// --- game helpers ---------------------------------------------------------
+
 function pickTwo() {
   const a = Math.floor(Math.random() * POOL.length);
   let b = Math.floor(Math.random() * POOL.length);
@@ -27,31 +62,19 @@ function pickTwo() {
   return [POOL[a], POOL[b]];
 }
 
-function genPin() {
-  // Make sure PIN isn't already in use
-  for (let i = 0; i < 20; i++) {
+async function genPin() {
+  for (let i = 0; i < 25; i++) {
     const pin = Math.floor(1000 + Math.random() * 9000).toString();
-    if (!games[pin]) return pin;
+    if (!(await redis(["EXISTS", KEY(pin)]))) return pin;
   }
   return Math.floor(1000 + Math.random() * 9000).toString();
 }
 
-// Clean up games older than 2 hours so memory doesn't grow
-function cleanup() {
-  const now = Date.now();
-  for (const pin of Object.keys(games)) {
-    if (now - games[pin].created > 2 * 60 * 60 * 1000) {
-      delete games[pin];
-    }
-  }
-}
-
-// Fetch a freely-licensed lead image from Wikipedia for a given name.
-// Falls back to a generated avatar when Wikipedia has no usable free image
-// (common for copyrighted fictional characters like Pikachu or Iron Man).
+// Fetch a freely-licensed lead image from Wikipedia. The pool is real people,
+// so this resolves to a real photo; the avatar is a last-resort safety net.
 function avatarFallback(name) {
-  return "https://api.dicebear.com/9.x/avataaars/svg?seed=" +
-    encodeURIComponent(name) + "&backgroundColor=ff6b35,ffd166,b9a994";
+  return "https://api.dicebear.com/9.x/initials/svg?seed=" +
+    encodeURIComponent(name) + "&backgroundColor=ff6b35,ffd166";
 }
 
 async function fetchImage(name) {
@@ -72,50 +95,95 @@ async function fetchImage(name) {
   return avatarFallback(name);
 }
 
+// Deal a fresh round: two distinct identities with their photos resolved.
+async function dealRound() {
+  const [nameA, nameB] = pickTwo();
+  const [imgA, imgB] = await Promise.all([fetchImage(nameA), fetchImage(nameB)]);
+  return {
+    // slot "host" is asked about by "guest", and vice versa
+    host: { name: nameA, image: imgA },
+    guest: { name: nameB, image: imgB }
+  };
+}
+
+// What a given player sees: the OTHER player's identity (they answer about it).
+function viewFor(game, role) {
+  const otherSlot = role === "host" ? game.round.guest : game.round.host;
+  const bothIn = game.hostJoined && game.guestJoined;
+  return {
+    pin: game.pin,
+    role,
+    roundId: game.roundId,
+    bothIn,
+    // Only reveal the identity once BOTH players are present — this is what
+    // makes the reveal happen at the same time on both phones.
+    youSeeName: bothIn ? otherSlot.name : null,
+    youSeeImage: bothIn ? otherSlot.image : null
+  };
+}
+
+// --- handler --------------------------------------------------------------
+
 export default async function handler(req, res) {
-  cleanup();
-
-  const action = req.query.action || (req.body && req.body.action);
-
-  if (action === "create") {
-    const pin = genPin();
-    const [hostName, guestName] = pickTwo();
-    games[pin] = {
-      pin,
-      hostName,   // host's secret identity (guest will see this)
-      guestName,  // guest's secret identity (host will see this)
-      guestJoined: false,
-      created: Date.now()
-    };
-    // The host sees the guest's identity (picture + name).
-    const youSeeImage = await fetchImage(guestName);
-    return res.status(200).json({ ok: true, pin, youSeeImage, youSeeName: guestName, role: "host" });
-  }
-
-  if (action === "join") {
-    const pin = (req.query.pin || (req.body && req.body.pin) || "").toString().trim();
-    if (!games[pin]) return res.status(404).json({ ok: false, error: "No game with that PIN" });
-    if (games[pin].guestJoined) return res.status(409).json({ ok: false, error: "Game already full" });
-    games[pin].guestJoined = true;
-    // The guest sees the host's identity (picture + name).
-    const youSeeImage = await fetchImage(games[pin].hostName);
-    return res.status(200).json({ ok: true, pin, youSeeImage, youSeeName: games[pin].hostName, role: "guest" });
-  }
-
-  if (action === "status") {
-    const pin = (req.query.pin || "").toString().trim();
-    if (!games[pin]) return res.status(404).json({ ok: false, error: "Game not found" });
-    return res.status(200).json({
-      ok: true,
-      guestJoined: games[pin].guestJoined
+  if (!REDIS_URL || !REDIS_TOKEN) {
+    return res.status(500).json({
+      ok: false,
+      error: "Server not configured: missing Upstash Redis env vars"
     });
   }
 
-  if (action === "end") {
-    const pin = (req.query.pin || (req.body && req.body.pin) || "").toString().trim();
-    if (games[pin]) delete games[pin];
-    return res.status(200).json({ ok: true });
-  }
+  const action = req.query.action || (req.body && req.body.action);
+  const pin = (req.query.pin || (req.body && req.body.pin) || "").toString().trim();
 
-  return res.status(400).json({ ok: false, error: "Unknown action" });
+  try {
+    if (action === "create") {
+      const newPin = await genPin();
+      const game = {
+        pin: newPin,
+        hostJoined: true,
+        guestJoined: false,
+        roundId: 1,
+        round: await dealRound(),
+        created: Date.now()
+      };
+      await saveGame(game);
+      return res.status(200).json({ ok: true, ...viewFor(game, "host") });
+    }
+
+    if (action === "join") {
+      const game = await loadGame(pin);
+      if (!game) return res.status(404).json({ ok: false, error: "No game with that PIN" });
+      if (game.guestJoined) return res.status(409).json({ ok: false, error: "Game already full" });
+      game.guestJoined = true;
+      await saveGame(game);
+      return res.status(200).json({ ok: true, ...viewFor(game, "guest") });
+    }
+
+    if (action === "state") {
+      const role = (req.query.role || "").toString();
+      const game = await loadGame(pin);
+      if (!game) return res.status(404).json({ ok: false, error: "Game not found" });
+      return res.status(200).json({ ok: true, ...viewFor(game, role) });
+    }
+
+    // Either player can start the next round on the same PIN — no re-entering.
+    if (action === "next") {
+      const role = (req.query.role || "").toString();
+      const game = await loadGame(pin);
+      if (!game) return res.status(404).json({ ok: false, error: "Game not found" });
+      game.roundId += 1;
+      game.round = await dealRound();
+      await saveGame(game);
+      return res.status(200).json({ ok: true, ...viewFor(game, role) });
+    }
+
+    if (action === "end") {
+      await redis(["DEL", KEY(pin)]);
+      return res.status(200).json({ ok: true });
+    }
+
+    return res.status(400).json({ ok: false, error: "Unknown action" });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: "Server error — try again" });
+  }
 }

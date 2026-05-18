@@ -295,6 +295,8 @@ let state = {
   role: null,
   youSeeImage: null,
   youSeeName: null,
+  roundId: null,
+  bothIn: false,
   pollTimer: null,
   hidden: false
 };
@@ -304,8 +306,9 @@ function html(strings, ...values) {
 }
 
 function render() {
-  // clear polling unless on lobby
-  if (state.pollTimer && state.view !== 'lobby') {
+  // Polling runs through both lobby and play (to catch the simultaneous
+  // reveal and partner-initiated rounds). Only stop it elsewhere.
+  if (state.pollTimer && state.view !== 'lobby' && state.view !== 'play') {
     clearInterval(state.pollTimer);
     state.pollTimer = null;
   }
@@ -367,15 +370,16 @@ function renderLobby() {
       </div>
       <div class="status-row" id="status">
         <div class="dot"></div>
-        <div id="status-text">${isHost ? 'Waiting for them to join…' : 'Both in. Ready to play!'}</div>
+        <div id="status-text">Waiting for you both to be ready…</div>
       </div>
       <div id="lobby-actions">
-        ${!isHost ? '<button class="btn btn-accent" onclick="goPlay()">Reveal my identity</button>' : ''}
         <button class="btn btn-ghost" onclick="leaveGame()">Leave</button>
       </div>
     </div>
   `;
-  if (isHost) startPolling();
+  // Both players poll. The moment the server reports both are in, both
+  // phones flip to the reveal together — no one taps "start".
+  startPolling();
 }
 
 function renderPlay() {
@@ -383,18 +387,19 @@ function renderPlay() {
     <div class="view">
       <div class="panel">
         <div class="identity-wrap">
-          <div class="identity-tag">Their identity · they answer about this</div>
+          <div class="identity-tag">Round ${state.roundId || 1} · they answer about this</div>
           <img class="identity-photo${state.hidden ? ' hidden' : ''}" id="photo" src="${state.youSeeImage}" alt="Their secret identity" />
           <div class="identity-name${state.hidden ? ' hidden' : ''}" id="name">${state.youSeeName}</div>
           <div class="identity-side">This is who <em>they</em> are. They ask you questions; you answer yes/no based on this. Use Hide so it never shows on FaceTime.</div>
         </div>
       </div>
       <div class="btn-row" style="margin-bottom: 10px;">
-        <button class="btn btn-ghost btn-small" style="flex: 1; padding: 14px;" onclick="toggleHide()">${state.hidden ? 'Reveal' : 'Hide name'}</button>
-        <button class="btn btn-ghost btn-small" style="flex: 1; padding: 14px;" onclick="leaveGame()">New game</button>
+        <button class="btn btn-ghost btn-small" style="flex: 1; padding: 14px;" onclick="toggleHide()">${state.hidden ? 'Reveal' : 'Hide'}</button>
+        <button class="btn btn-accent btn-small" style="flex: 1; padding: 14px;" id="next-btn" onclick="nextRound()">Next round</button>
       </div>
+      <button class="btn btn-ghost" onclick="leaveGame()">End game</button>
       <div class="tips">
-        <strong>Tip.</strong> Don't show your screen on FaceTime — angle your phone away or use the Hide button when she's looking. Take turns asking one yes/no question at a time.
+        <strong>Tip.</strong> Don't show your screen on FaceTime — angle your phone away or hit Hide when she's looking. Once you've both guessed, either of you taps <em>Next round</em> — you keep the same PIN and new people are dealt to you both.
       </div>
     </div>
   `;
@@ -409,8 +414,7 @@ async function createGame() {
     if (!data.ok) throw new Error(data.error || 'Failed');
     state.pin = data.pin;
     state.role = 'host';
-    state.youSeeImage = data.youSeeImage;
-    state.youSeeName = data.youSeeName;
+    applyServerState(data);
     state.view = 'lobby';
     render();
   } catch (e) {
@@ -432,8 +436,7 @@ async function doJoin() {
     if (!data.ok) { err.textContent = data.error || 'Could not join'; return; }
     state.pin = data.pin;
     state.role = 'guest';
-    state.youSeeImage = data.youSeeImage;
-    state.youSeeName = data.youSeeName;
+    applyServerState(data);
     state.view = 'lobby';
     render();
   } catch (e) {
@@ -441,48 +444,74 @@ async function doJoin() {
   }
 }
 
+// Copy the server's view of the game into local state.
+function applyServerState(data) {
+  state.bothIn = !!data.bothIn;
+  state.youSeeImage = data.youSeeImage;
+  state.youSeeName = data.youSeeName;
+  state.roundId = data.roundId;
+}
+
+// Both players poll the same endpoint. We react to two transitions:
+//  1. lobby -> play: fires for BOTH phones the moment both are in (the
+//     server only fills in the identity once bothIn is true), so the
+//     reveal happens at the same time on both sides.
+//  2. round change: if the partner taps "Next round", roundId changes
+//     and both phones swap to the new people automatically.
 function startPolling() {
   if (state.pollTimer) clearInterval(state.pollTimer);
   state.pollTimer = setInterval(async () => {
-    if (state.view !== 'lobby' || state.role !== 'host') return;
+    if (state.view !== 'lobby' && state.view !== 'play') return;
     try {
-      const res = await fetch('/api/game?action=status&pin=' + state.pin);
+      const res = await fetch('/api/game?action=state&pin=' + state.pin + '&role=' + state.role);
       const data = await res.json();
-      if (data.ok && data.guestJoined) {
-        clearInterval(state.pollTimer);
-        state.pollTimer = null;
-        // Update UI to "ready" and show start button
-        const status = document.getElementById('status');
-        const statusText = document.getElementById('status-text');
-        if (status && statusText) {
-          status.classList.add('ready');
-          statusText.textContent = "She's in. Reveal who she is.";
-        }
-        const actions = document.getElementById('lobby-actions');
-        if (actions && !document.getElementById('start-btn')) {
-          const btn = document.createElement('button');
-          btn.id = 'start-btn';
-          btn.className = 'btn btn-accent';
-          btn.textContent = 'Reveal my identity';
-          btn.onclick = goPlay;
-          actions.insertBefore(btn, actions.firstChild);
-        }
+      if (!data.ok) return;
+
+      const prevRound = state.roundId;
+      applyServerState(data);
+
+      if (state.view === 'lobby' && state.bothIn) {
+        state.hidden = false;
+        state.view = 'play';
+        render();
+      } else if (state.view === 'play' && data.roundId !== prevRound) {
+        // Partner started a new round — resync and un-hide.
+        state.hidden = false;
+        render();
       }
     } catch (e) { /* keep polling */ }
   }, 2000);
 }
 
-function goPlay() { state.view = 'play'; render(); }
+// Either player can deal the next round on the same PIN. The poll loop
+// on the other phone picks up the new roundId and follows along.
+async function nextRound() {
+  const btn = document.getElementById('next-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Dealing…'; }
+  try {
+    const res = await fetch('/api/game?action=next&pin=' + state.pin + '&role=' + state.role, { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      applyServerState(data);
+      state.hidden = false;
+      render();
+    } else {
+      alert(data.error || 'Could not start next round');
+      if (btn) { btn.disabled = false; btn.textContent = 'Next round'; }
+    }
+  } catch (e) {
+    alert('Network problem — try again');
+    if (btn) { btn.disabled = false; btn.textContent = 'Next round'; }
+  }
+}
 
 function toggleHide() {
   state.hidden = !state.hidden;
-  const el = document.getElementById('photo');
-  if (el) el.classList.toggle('hidden', state.hidden);
-  // also update button text
   render();
 }
 
 async function leaveGame() {
+  if (state.pollTimer) { clearInterval(state.pollTimer); state.pollTimer = null; }
   if (state.pin) {
     try { await fetch('/api/game?action=end&pin=' + state.pin, { method: 'POST' }); } catch(e){}
   }
@@ -490,6 +519,8 @@ async function leaveGame() {
   state.role = null;
   state.youSeeImage = null;
   state.youSeeName = null;
+  state.roundId = null;
+  state.bothIn = false;
   state.hidden = false;
   state.view = 'home';
   render();
