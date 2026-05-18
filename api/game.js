@@ -1,10 +1,11 @@
-// Game state is stored in Upstash Redis (REST API) so it survives serverless
-// cold starts and multi-instance routing — required for replaying many rounds
-// on one PIN. Set UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN in the
-// Vercel project env. Without them the game cannot keep shared state.
-
-const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
-const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+// In-memory game store. No database, no accounts, no env vars.
+//
+// Serverless caveat: each warm instance has its own memory, and a cold start
+// wipes it. To stay playable anyway, a `state`/`next` call for a PIN the
+// current instance doesn't know about will REBUILD the game (recover) rather
+// than error. Worst case after a cold start: you get re-dealt new people and
+// keep playing — never a dead "game not found" wall.
+const games = global.__games || (global.__games = {});
 
 // Real people only — every name resolves to a real freely-licensed
 // photo on Wikipedia, so no avatar fallbacks are needed in practice.
@@ -25,34 +26,6 @@ const POOL = [
   "Bill Gates", "Greta Thunberg", "Michelle Obama", "Gordon Ramsay", "David Attenborough"
 ];
 
-// --- Redis REST helpers ---------------------------------------------------
-
-async function redis(command) {
-  const r = await fetch(REDIS_URL, {
-    method: "POST",
-    headers: {
-      Authorization: "Bearer " + REDIS_TOKEN,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(command)
-  });
-  if (!r.ok) throw new Error("Redis error " + r.status);
-  const data = await r.json();
-  return data.result;
-}
-
-const KEY = (pin) => "gw:game:" + pin;
-const GAME_TTL = 60 * 60 * 6; // 6h — plenty for a long replay session
-
-async function loadGame(pin) {
-  const raw = await redis(["GET", KEY(pin)]);
-  return raw ? JSON.parse(raw) : null;
-}
-
-async function saveGame(game) {
-  await redis(["SET", KEY(game.pin), JSON.stringify(game), "EX", GAME_TTL]);
-}
-
 // --- game helpers ---------------------------------------------------------
 
 function pickTwo() {
@@ -62,19 +35,27 @@ function pickTwo() {
   return [POOL[a], POOL[b]];
 }
 
-async function genPin() {
+function genPin() {
   for (let i = 0; i < 25; i++) {
     const pin = Math.floor(1000 + Math.random() * 9000).toString();
-    if (!(await redis(["EXISTS", KEY(pin)]))) return pin;
+    if (!games[pin]) return pin;
   }
   return Math.floor(1000 + Math.random() * 9000).toString();
+}
+
+// Drop games older than 6h so memory doesn't grow on a long-lived instance.
+function cleanup() {
+  const now = Date.now();
+  for (const pin of Object.keys(games)) {
+    if (now - games[pin].created > 6 * 60 * 60 * 1000) delete games[pin];
+  }
 }
 
 // Fetch a freely-licensed lead image from Wikipedia. The pool is real people,
 // so this resolves to a real photo; the avatar is a last-resort safety net.
 function avatarFallback(name) {
   return "https://api.dicebear.com/9.x/initials/svg?seed=" +
-    encodeURIComponent(name) + "&backgroundColor=ff6b35,ffd166";
+    encodeURIComponent(name) + "&backgroundColor=5fae4a,aede7e";
 }
 
 async function fetchImage(name) {
@@ -100,9 +81,8 @@ async function dealRound() {
   const [nameA, nameB] = pickTwo();
   const [imgA, imgB] = await Promise.all([fetchImage(nameA), fetchImage(nameB)]);
   return {
-    // slot "host" is asked about by "guest", and vice versa
-    host: { name: nameA, image: imgA },
-    guest: { name: nameB, image: imgB }
+    host: { name: nameA, image: imgA },   // asked about by "guest"
+    guest: { name: nameB, image: imgB }   // asked about by "host"
   };
 }
 
@@ -115,29 +95,42 @@ function viewFor(game, role) {
     role,
     roundId: game.roundId,
     bothIn,
-    // Only reveal the identity once BOTH players are present — this is what
-    // makes the reveal happen at the same time on both phones.
+    // Only reveal once BOTH are present — this is what makes the reveal
+    // land on both phones at the same time.
     youSeeName: bothIn ? otherSlot.name : null,
     youSeeImage: bothIn ? otherSlot.image : null
   };
 }
 
+// Recover a game this instance forgot (cold start). We can't recover who had
+// joined, so assume both are in — the players are clearly mid-session if
+// they're polling — and deal a fresh round so play simply continues.
+async function recoverGame(pin) {
+  const game = {
+    pin,
+    hostJoined: true,
+    guestJoined: true,
+    roundId: 1,
+    round: await dealRound(),
+    created: Date.now(),
+    recovered: true
+  };
+  games[pin] = game;
+  return game;
+}
+
 // --- handler --------------------------------------------------------------
 
 export default async function handler(req, res) {
-  if (!REDIS_URL || !REDIS_TOKEN) {
-    return res.status(500).json({
-      ok: false,
-      error: "Server not configured: missing Upstash Redis env vars"
-    });
-  }
+  cleanup();
 
   const action = req.query.action || (req.body && req.body.action);
   const pin = (req.query.pin || (req.body && req.body.pin) || "").toString().trim();
+  const role = (req.query.role || "").toString();
 
   try {
     if (action === "create") {
-      const newPin = await genPin();
+      const newPin = genPin();
       const game = {
         pin: newPin,
         hostJoined: true,
@@ -146,39 +139,35 @@ export default async function handler(req, res) {
         round: await dealRound(),
         created: Date.now()
       };
-      await saveGame(game);
+      games[newPin] = game;
       return res.status(200).json({ ok: true, ...viewFor(game, "host") });
     }
 
     if (action === "join") {
-      const game = await loadGame(pin);
+      let game = games[pin];
       if (!game) return res.status(404).json({ ok: false, error: "No game with that PIN" });
       if (game.guestJoined) return res.status(409).json({ ok: false, error: "Game already full" });
       game.guestJoined = true;
-      await saveGame(game);
       return res.status(200).json({ ok: true, ...viewFor(game, "guest") });
     }
 
     if (action === "state") {
-      const role = (req.query.role || "").toString();
-      const game = await loadGame(pin);
+      // Recover instead of erroring if this instance forgot the game.
+      let game = games[pin] || (pin ? await recoverGame(pin) : null);
       if (!game) return res.status(404).json({ ok: false, error: "Game not found" });
       return res.status(200).json({ ok: true, ...viewFor(game, role) });
     }
 
-    // Either player can start the next round on the same PIN — no re-entering.
     if (action === "next") {
-      const role = (req.query.role || "").toString();
-      const game = await loadGame(pin);
+      let game = games[pin] || (pin ? await recoverGame(pin) : null);
       if (!game) return res.status(404).json({ ok: false, error: "Game not found" });
       game.roundId += 1;
       game.round = await dealRound();
-      await saveGame(game);
       return res.status(200).json({ ok: true, ...viewFor(game, role) });
     }
 
     if (action === "end") {
-      await redis(["DEL", KEY(pin)]);
+      if (games[pin]) delete games[pin];
       return res.status(200).json({ ok: true });
     }
 
