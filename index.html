@@ -10,14 +10,17 @@
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   :root {
-    --bg: #0e0b08;
-    --bg2: #181310;
-    --ink: #f5ede0;
-    --ink-dim: #b9a994;
-    --ink-faint: #7a6a55;
-    --accent: #ff6b35;
-    --accent2: #ffd166;
-    --line: rgba(245, 237, 224, 0.12);
+    /* Cucumber + watercolour palette */
+    --bg: #eef7ec;
+    --bg2: #ffffff;
+    --ink: #1f3d2b;
+    --ink-dim: #4f7259;
+    --ink-faint: #8aa893;
+    --accent: #5fae4a;     /* cucumber green */
+    --accent2: #aede7e;    /* tender flesh green */
+    --rind: #2f7d3a;       /* dark cucumber rind */
+    --water: #bfe6d8;      /* watercolour wash */
+    --line: rgba(47, 125, 58, 0.18);
   }
   html, body {
     height: 100%;
@@ -28,16 +31,37 @@
     -webkit-font-smoothing: antialiased;
   }
   body {
+    /* soft watercolour blooms in cucumber & water tones */
     background:
-      radial-gradient(ellipse at top, rgba(255, 107, 53, 0.18) 0%, transparent 50%),
-      radial-gradient(ellipse at bottom, rgba(255, 209, 102, 0.08) 0%, transparent 60%),
+      radial-gradient(ellipse 70% 50% at 15% 0%, rgba(95, 174, 74, 0.28) 0%, transparent 55%),
+      radial-gradient(ellipse 60% 45% at 90% 12%, rgba(191, 230, 216, 0.55) 0%, transparent 60%),
+      radial-gradient(ellipse 80% 50% at 50% 100%, rgba(174, 222, 126, 0.30) 0%, transparent 60%),
+      radial-gradient(circle at 80% 75%, rgba(95, 174, 74, 0.14) 0%, transparent 45%),
       var(--bg);
     min-height: 100vh;
     min-height: 100dvh;
     padding: 24px 20px 40px;
     display: flex;
     flex-direction: column;
+    position: relative;
   }
+  /* floating cucumber slices, watercolour-soft */
+  .cuke {
+    position: fixed;
+    pointer-events: none;
+    opacity: 0.5;
+    filter: blur(0.3px) drop-shadow(0 4px 10px rgba(47, 125, 58, 0.15));
+    z-index: 0;
+    animation: drift 14s ease-in-out infinite;
+  }
+  .cuke.c1 { top: 6%;  left: -26px; width: 96px;  height: 96px;  animation-delay: 0s; }
+  .cuke.c2 { top: 38%; right: -34px; width: 120px; height: 120px; animation-delay: -5s; opacity: 0.38; }
+  .cuke.c3 { bottom: 8%; left: -20px; width: 78px;  height: 78px;  animation-delay: -9s; opacity: 0.42; }
+  @keyframes drift {
+    0%, 100% { transform: translateY(0) rotate(-6deg); }
+    50%      { transform: translateY(-16px) rotate(8deg); }
+  }
+  .app { position: relative; z-index: 1; }
   .app { max-width: 440px; margin: 0 auto; width: 100%; flex: 1; display: flex; flex-direction: column; }
   .serif { font-family: 'Fraunces', Georgia, serif; }
 
@@ -66,13 +90,14 @@
 
   /* Cards / panels */
   .panel {
-    background: rgba(24, 19, 16, 0.7);
+    background: rgba(255, 255, 255, 0.72);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
     border: 1px solid var(--line);
-    border-radius: 20px;
+    border-radius: 24px;
     padding: 24px;
     margin-bottom: 14px;
+    box-shadow: 0 10px 30px rgba(47, 125, 58, 0.10);
   }
 
   /* Buttons */
@@ -86,21 +111,22 @@
   .btn {
     width: 100%;
     padding: 18px;
-    border-radius: 14px;
+    border-radius: 16px;
     font-size: 16px;
     font-weight: 600;
     background: var(--ink);
-    color: var(--bg);
+    color: #f3faf0;
     transition: transform 0.1s, opacity 0.2s;
     margin-bottom: 10px;
   }
   .btn:active { transform: scale(0.97); }
   .btn-accent {
-    background: linear-gradient(135deg, var(--accent), #e8541d);
-    color: #fff;
+    background: linear-gradient(135deg, var(--accent2), var(--accent) 55%, var(--rind));
+    color: #0f2c17;
+    box-shadow: 0 8px 20px rgba(95, 174, 74, 0.35);
   }
   .btn-ghost {
-    background: transparent;
+    background: rgba(255, 255, 255, 0.5);
     color: var(--ink);
     border: 1px solid var(--line);
   }
@@ -163,18 +189,18 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    background: rgba(255, 107, 53, 0.08);
-    border: 1px solid rgba(255, 107, 53, 0.2);
+    background: rgba(191, 230, 216, 0.45);
+    border: 1px solid var(--line);
     padding: 14px 16px;
-    border-radius: 12px;
+    border-radius: 14px;
     margin-bottom: 16px;
     font-size: 14px;
     color: var(--ink-dim);
   }
   .status-row.ready {
-    background: rgba(120, 200, 100, 0.1);
-    border-color: rgba(120, 200, 100, 0.25);
-    color: #c5e7b8;
+    background: rgba(174, 222, 126, 0.4);
+    border-color: rgba(47, 125, 58, 0.3);
+    color: var(--rind);
   }
   .dot {
     width: 8px; height: 8px; border-radius: 50%;
@@ -234,7 +260,7 @@
   /* Tips section */
   .tips {
     padding: 18px 20px;
-    background: rgba(255, 255, 255, 0.03);
+    background: rgba(191, 230, 216, 0.35);
     border-radius: 14px;
     font-size: 13px;
     line-height: 1.6;
@@ -246,7 +272,7 @@
 
   /* Error */
   .error {
-    color: #ff9b8a;
+    color: #c0492f;
     font-size: 14px;
     text-align: center;
     min-height: 20px;
@@ -276,10 +302,35 @@
 </style>
 </head>
 <body>
+<!-- Hidden master cucumber slice — referenced via <use> for the decor -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="cuke-slice" viewBox="0 0 100 100">
+    <circle cx="50" cy="50" r="48" fill="#3f9a47"/>
+    <circle cx="50" cy="50" r="44" fill="#e9f6dd"/>
+    <circle cx="50" cy="50" r="40" fill="#cdeaa6"/>
+    <circle cx="50" cy="50" r="30" fill="#dff3c4"/>
+    <g fill="#bcdd8f">
+      <ellipse cx="50" cy="34" rx="3.4" ry="5"/>
+      <ellipse cx="66" cy="44" rx="3.4" ry="5" transform="rotate(72 66 44)"/>
+      <ellipse cx="60" cy="63" rx="3.4" ry="5" transform="rotate(144 60 63)"/>
+      <ellipse cx="40" cy="63" rx="3.4" ry="5" transform="rotate(216 40 63)"/>
+      <ellipse cx="34" cy="44" rx="3.4" ry="5" transform="rotate(288 34 44)"/>
+    </g>
+    <g stroke="#9fcf6e" stroke-width="1.6" fill="none" opacity="0.7">
+      <path d="M50 22 L50 32"/><path d="M74 39 L65 44"/>
+      <path d="M65 70 L58 62"/><path d="M35 70 L42 62"/>
+      <path d="M26 39 L35 44"/>
+    </g>
+  </symbol>
+</svg>
+<svg class="cuke c1"><use href="#cuke-slice"/></svg>
+<svg class="cuke c2"><use href="#cuke-slice"/></svg>
+<svg class="cuke c3"><use href="#cuke-slice"/></svg>
+
 <div class="app">
   <div class="header">
     <h1>Guess <span class="who">Who?</span></h1>
-    <div class="sub">For two · over FaceTime</div>
+    <div class="sub">🥒 For two · over FaceTime</div>
   </div>
 
   <div id="screen"></div>
