@@ -48,7 +48,33 @@ function cleanup() {
   }
 }
 
-export default function handler(req, res) {
+// Fetch a freely-licensed lead image from Wikipedia for a given name.
+// Falls back to a generated avatar when Wikipedia has no usable free image
+// (common for copyrighted fictional characters like Pikachu or Iron Man).
+function avatarFallback(name) {
+  return "https://api.dicebear.com/9.x/avataaars/svg?seed=" +
+    encodeURIComponent(name) + "&backgroundColor=ff6b35,ffd166,b9a994";
+}
+
+async function fetchImage(name) {
+  try {
+    const url = "https://en.wikipedia.org/w/api.php?action=query&format=json" +
+      "&prop=pageimages&piprop=original|thumbnail&pithumbsize=600&redirects=1" +
+      "&titles=" + encodeURIComponent(name) + "&origin=*";
+    const r = await fetch(url, { headers: { "User-Agent": "guess-who-game/1.0" } });
+    if (!r.ok) return avatarFallback(name);
+    const data = await r.json();
+    const pages = data && data.query && data.query.pages;
+    if (pages) {
+      const page = Object.values(pages)[0];
+      const img = page && (page.original || page.thumbnail);
+      if (img && img.source) return img.source;
+    }
+  } catch (e) { /* fall through to avatar */ }
+  return avatarFallback(name);
+}
+
+export default async function handler(req, res) {
   cleanup();
 
   const action = req.query.action || (req.body && req.body.action);
@@ -63,7 +89,9 @@ export default function handler(req, res) {
       guestJoined: false,
       created: Date.now()
     };
-    return res.status(200).json({ ok: true, pin, youSee: guestName, role: "host" });
+    // The host sees the guest's identity — as a picture only.
+    const youSeeImage = await fetchImage(guestName);
+    return res.status(200).json({ ok: true, pin, youSeeImage, role: "host" });
   }
 
   if (action === "join") {
@@ -71,7 +99,9 @@ export default function handler(req, res) {
     if (!games[pin]) return res.status(404).json({ ok: false, error: "No game with that PIN" });
     if (games[pin].guestJoined) return res.status(409).json({ ok: false, error: "Game already full" });
     games[pin].guestJoined = true;
-    return res.status(200).json({ ok: true, pin, youSee: games[pin].hostName, role: "guest" });
+    // The guest sees the host's identity — as a picture only.
+    const youSeeImage = await fetchImage(games[pin].hostName);
+    return res.status(200).json({ ok: true, pin, youSeeImage, role: "guest" });
   }
 
   if (action === "status") {

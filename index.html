@@ -200,17 +200,19 @@
     color: var(--ink-faint);
     margin-bottom: 16px;
   }
-  .identity-name {
-    font-family: 'Fraunces', serif;
-    font-weight: 700;
-    font-size: 38px;
-    line-height: 1.15;
-    color: var(--ink);
-    padding: 8px 0;
+  .identity-photo {
+    width: 100%;
+    max-width: 300px;
+    aspect-ratio: 3 / 4;
+    object-fit: cover;
+    border-radius: 18px;
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--line);
+    margin: 4px auto 0;
+    display: block;
     transition: filter 0.3s;
-    word-break: break-word;
   }
-  .identity-name.hidden { filter: blur(20px); }
+  .identity-photo.hidden { filter: blur(28px); }
   .identity-side {
     margin-top: 14px;
     font-size: 13px;
@@ -280,7 +282,7 @@ let state = {
   view: 'home',
   pin: null,
   role: null,
-  youSee: null,
+  youSeeImage: null,
   pollTimer: null,
   hidden: false
 };
@@ -369,9 +371,9 @@ function renderPlay() {
     <div class="view">
       <div class="panel">
         <div class="identity-wrap">
-          <div class="identity-tag">${state.role === 'host' ? 'Partner' : 'Partner'} · keep this hidden</div>
-          <div class="identity-name${state.hidden ? ' hidden' : ''}" id="name">${state.youSee}</div>
-          <div class="identity-side">…this is who <em>they</em> are. Ask them questions until they guess it.</div>
+          <div class="identity-tag">Partner · keep this hidden</div>
+          <img class="identity-photo${state.hidden ? ' hidden' : ''}" id="photo" src="${state.youSeeImage}" alt="Their secret identity" />
+          <div class="identity-side">…this is who <em>they</em> are. No name shown — just like the real game. Ask them questions until they guess it.</div>
         </div>
       </div>
       <div class="btn-row" style="margin-bottom: 10px;">
@@ -394,7 +396,7 @@ async function createGame() {
     if (!data.ok) throw new Error(data.error || 'Failed');
     state.pin = data.pin;
     state.role = 'host';
-    state.youSee = data.youSee;
+    state.youSeeImage = data.youSeeImage;
     state.view = 'lobby';
     render();
   } catch (e) {
@@ -416,7 +418,7 @@ async function doJoin() {
     if (!data.ok) { err.textContent = data.error || 'Could not join'; return; }
     state.pin = data.pin;
     state.role = 'guest';
-    state.youSee = data.youSee;
+    state.youSeeImage = data.youSeeImage;
     state.view = 'lobby';
     render();
   } catch (e) {
@@ -459,7 +461,7 @@ function goPlay() { state.view = 'play'; render(); }
 
 function toggleHide() {
   state.hidden = !state.hidden;
-  const el = document.getElementById('name');
+  const el = document.getElementById('photo');
   if (el) el.classList.toggle('hidden', state.hidden);
   // also update button text
   render();
@@ -471,7 +473,7 @@ async function leaveGame() {
   }
   state.pin = null;
   state.role = null;
-  state.youSee = null;
+  state.youSeeImage = null;
   state.hidden = false;
   state.view = 'home';
   render();
